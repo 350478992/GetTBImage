@@ -8,13 +8,16 @@ from bs4 import BeautifulSoup
 
 
 class Image(object):
-    ImagePath = "./images"
+    ImageMainPath = "./images/main"  # 主图存放路径
+    ImageDetailPath = "./images/detail"  # 详情图存放路径
+    imgMainList = []  # 主图列表
+    imgDetailList = []  # 详情图列表
     UserAgent = "Mozilla/4.0 (compatible; MSIE 5.5; Windows NT)"
 
     def __init__(self, url, urlType):
         self.url = url
         self.urlType = urlType
-        self.imgList = []
+        # 获取执行方法
         self.handleFunc = {"1688": self.getAli, "taobao": self.getTaobao}.get(urlType)
         self.__initPath()
 
@@ -23,10 +26,15 @@ class Image(object):
 
     def __initPath(self):
         try:
-            shutil.rmtree(self.ImagePath)
+            # 删除目录
+            shutil.rmtree(self.ImageMainPath)
+            shutil.rmtree(self.ImageDetailPath)
         except:
             pass
-        os.makedirs(self.ImagePath)
+        # 创建目录
+        os.makedirs(self.ImageMainPath)
+        os.makedirs(self.ImageDetailPath)
+
 
     def __mRequest(self, url):
         req = request.Request(url)
@@ -38,19 +46,19 @@ class Image(object):
             soup = BeautifulSoup(f, 'html.parser')
             self.handleFunc(soup)
 
-    def downloadImg(self):
-        imgLen = len(self.imgList)
+    def downloadImg(self, imgList, path):
+        imgLen = len(imgList)
         if imgLen == 0:
             print("没有获取到图片")
             return
 
-        for i in range(len(self.imgList)):
-            curImgUrl = self.imgList[i]
+        for i in range(len(imgList)):
+            curImgUrl = imgList[i]
             with self.__mRequest(curImgUrl) as req:
                 imgSplit = os.path.split(curImgUrl)
-                with open(self.ImagePath + "/" + imgSplit[-1], "wb") as f:
+                with open(path + "/" + imgSplit[-1], "wb") as f:
                     f.write(req.read())
-        print("下载完成, 请查看" + self.ImagePath + "文件夹")
+        print("下载完成, 请查看" + path + "文件夹")
 
     def getTaobao(self, s):
         urlTuple = parse.urlparse(self.url)
@@ -70,22 +78,34 @@ class Image(object):
             imgTuple = imgPattern.findall(imgApiContent)
             for i in imgTuple:
                 imgPath = i[0]
-                self.imgList.append(taobaoCDNPrefixUrl + imgPath)
+                self.imgMainList.append(taobaoCDNPrefixUrl + imgPath)
 
-    def getAli(self, s):
-        detailObj = s.find(id="desc-lazyload-container")
+    def getAli(self, soup):
+        # 详情图
+        detailObj = soup.find(id="desc-lazyload-container")
         imageUrl = detailObj.attrs["data-tfs-url"]
         imageData = self.__mRequest(imageUrl).read()
         imageSoup = BeautifulSoup(imageData, 'html.parser')
-        imgTagList = imageSoup.find_all("img")
-        for i in imgTagList:
-            self.imgList.append(
-                i.attrs["src"].replace('\\"', "")
-            )
+        imgDetailList = imageSoup.find_all("img")
+        for i in imgDetailList:
+            self.imgDetailList.append( i.attrs["src"].replace('\\"', "") )
+
+        # 主图
+        mainImgList = soup.select("#dt-tab .tab-trigger .vertical-img>.box-img>img")
+        for i in mainImgList:
+            try:
+                rep = i.attrs['data-lazy-src'].replace('\\"', "").replace('60x60','600x600').replace('_.webp','')
+            except Exception:
+                rep = i.attrs["src"].replace('\\"', "").replace('60x60','600x600').replace('_.webp','')
+            self.imgMainList.append(rep)
 
 
 if __name__ == "__main__":
     while 1:
+        # downloadPath = input("请输入下载地址:")
+        # if downloadPath == "":
+        #     print("没有下载地址")
+        #     continue
         url = input("请粘贴链接:")
         if url == "":
             print("没有输入链接")
@@ -96,9 +116,10 @@ if __name__ == "__main__":
         if "taobao.com" in url:
             urlType = "taobao"
         try:
-            getImage = Image(url, urlType)
-            getImage.parse()
-            getImage.downloadImg()
+            img = Image(url, urlType)
+            img.parse()
+            img.downloadImg(img.imgMainList, img.ImageMainPath)
+            img.downloadImg(img.imgDetailList, img.ImageDetailPath)
             print("\n\n")
         except ValueError as e:
             print("值错误: ", e)
